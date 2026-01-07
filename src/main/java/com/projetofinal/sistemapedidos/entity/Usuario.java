@@ -41,6 +41,9 @@ public class Usuario {
     
     @Column(length = 20)
     private String phone;
+
+    @Column(unique = true, length = 50)
+    private String registration;
     
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
