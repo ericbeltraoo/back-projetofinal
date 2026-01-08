@@ -1,4 +1,3 @@
-// ========== UsuarioService.java ==========
 package com.projetofinal.sistemapedidos.service;
 
 import com.projetofinal.sistemapedidos.dto.UsuarioDTO;
@@ -38,41 +37,49 @@ public class UsuarioService {
     }
 
     /**
-     * Registrar um novo usuário vindo do formulário de cadastro.
-     * Agora inclui o campo de matrícula (registration).
+     * Registrar um novo usuário vindo do formulário de cadastro (React).
      */
     @Transactional
     public UsuarioDTO registrar(UsuarioDTO dto) {
-        // 1. Validação de segurança: verificar se e-mail já existe
         if (usuarioRepository.existsByEmail(dto.getEmail())) {
-            throw new RuntimeException("Este e-mail já está cadastrado em nosso sistema.");
+            throw new RuntimeException("Este e-mail já está cadastrado.");
         }
 
-        // 2. Criação da entidade e mapeamento dos dados do DTO
         Usuario novoUsuario = new Usuario();
         novoUsuario.setName(dto.getName());
         novoUsuario.setEmail(dto.getEmail());
         novoUsuario.setPassword(dto.getPassword());
         novoUsuario.setPhone(dto.getPhone());
         novoUsuario.setClassName(dto.getClassName());
-
-        // MAPEAMENTO DA MATRÍCULA (Importante para a página de perfil)
         novoUsuario.setRegistration(dto.getRegistration());
 
-        // 3. Regras de negócio automáticas
-        novoUsuario.setRole(RoleUsuario.STUDENT);
-        novoUsuario.setBalance(new BigDecimal("100.00"));
+        // Regra de saldo inicial: se não informado, começa com 0.00
+        if (dto.getBalance() != null) {
+            novoUsuario.setBalance(dto.getBalance());
+        } else {
+            novoUsuario.setBalance(BigDecimal.ZERO);
+        }
 
-        // 4. Salvar no MySQL
+        novoUsuario.setRole(RoleUsuario.STUDENT);
+
         Usuario salvo = usuarioRepository.save(novoUsuario);
         return convertToDTO(salvo);
     }
 
+    /**
+     * Método Criar: Utilizado para persistir a entidade Usuario diretamente.
+     * Resolve o erro "cannot find symbol: method criar".
+     */
     @Transactional
     public UsuarioDTO criar(Usuario usuario) {
         if (usuarioRepository.existsByEmail(usuario.getEmail())) {
             throw new RuntimeException("Email já cadastrado");
         }
+
+        if (usuario.getBalance() == null) {
+            usuario.setBalance(BigDecimal.ZERO);
+        }
+
         Usuario salvo = usuarioRepository.save(usuario);
         return convertToDTO(salvo);
     }
@@ -93,30 +100,30 @@ public class UsuarioService {
         return convertToDTO(salvo);
     }
 
-    public void deletar(Long id) {
-        usuarioRepository.deleteById(id);
-    }
-
     public UsuarioDTO autenticar(String email, String password) {
         Usuario usuario = usuarioRepository.findByEmailAndPassword(email, password)
                 .orElse(null);
         return usuario != null ? convertToDTO(usuario) : null;
     }
 
+    public void deletar(Long id) {
+        usuarioRepository.deleteById(id);
+    }
+
     /**
-     * Converte a Entidade do Banco para DTO
-     * Inclui a matrícula para que o React possa exibi-la.
+     * Converte a Entidade do Banco (Usuario) para o Objeto de Transferência (UsuarioDTO).
+     * GARANTE que o saldo e a matrícula do banco cheguem ao React.
      */
     private UsuarioDTO convertToDTO(Usuario usuario) {
         return new UsuarioDTO(
                 usuario.getId(),
                 usuario.getName(),
                 usuario.getEmail(),
-                usuario.getRole().name(),
+                usuario.getRole() != null ? usuario.getRole().name() : "STUDENT",
                 usuario.getClassName(),
-                usuario.getBalance(),
+                usuario.getBalance(), // Valor real da coluna 'balance'
                 usuario.getPhone(),
-                usuario.getRegistration() // Adicionado aqui
+                usuario.getRegistration() // Valor real da coluna 'registration'
         );
     }
 }

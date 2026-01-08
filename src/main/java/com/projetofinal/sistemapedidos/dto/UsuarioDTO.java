@@ -14,13 +14,13 @@ public class UsuarioDTO {
     private String name;
     private String email;
     private String password;
-    private String role;
+    private String role; // String para receber o .name() do Enum
     private String className;
     private BigDecimal balance;
     private String phone;
-    private String registration; // 1. ADICIONE ESTA LINHA
+    private String registration;
 
-    // 2. Atualize o construtor usado no convertToDTO para incluir registration no final
+    // Construtor manual corrigido
     public UsuarioDTO(Long id, String name, String email, String role, String className, BigDecimal balance, String phone, String registration) {
         this.id = id;
         this.name = name;
@@ -29,6 +29,6 @@ public class UsuarioDTO {
         this.className = className;
         this.balance = balance;
         this.phone = phone;
-        this.registration = this.registration;
+        this.registration = registration; // CORREÇÃO: attribution correta
     }
 }
