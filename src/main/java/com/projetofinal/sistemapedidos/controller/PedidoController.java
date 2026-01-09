@@ -92,7 +92,7 @@ public class PedidoController {
         } catch (Exception e) {
             // Erros genéricos
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Erro inesperado ao processar o cancelamento."));
+                    .body(Map.of("message", "Erroo inesperado ao processar o cancelamento."));
         }
     }
 }
