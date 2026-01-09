@@ -62,7 +62,6 @@ public class PedidoService {
 
     @Transactional
     public PedidoDTO criar(CriarPedidoRequest request) {
-        // 1. Validar Usuário
         Usuario usuario = usuarioRepository.findById(request.getUserId())
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
@@ -74,12 +73,10 @@ public class PedidoService {
         pedido.setPaymentMethod(MetodoPagamento.valueOf(request.getPaymentMethod().toUpperCase()));
         pedido.setItems(new ArrayList<>());
 
-        // 2. Processar Itens
         for (CriarPedidoRequest.ItemPedidoRequest itemReq : request.getItems()) {
             Produto produto = produtoRepository.findById(itemReq.getProductId())
                     .orElseThrow(() -> new RuntimeException("Produto ID " + itemReq.getProductId() + " não encontrado"));
 
-            // Verificar Estoque
             if (produto.getStock() < itemReq.getQuantity()) {
                 throw new RuntimeException("Estoque insuficiente para: " + produto.getName());
             }
@@ -89,54 +86,81 @@ public class PedidoService {
             item.setProduto(produto);
             item.setQuantity(itemReq.getQuantity());
 
-            // Garante que o preço unitário do item é o preço atual do produto no banco
             BigDecimal precoUnitario = (produto.getPrice() != null) ? produto.getPrice() : BigDecimal.ZERO;
             item.setPriceUnit(precoUnitario);
 
             pedido.getItems().add(item);
 
-            // Atualizar estoque do produto
             int novoEstoque = produto.getStock() - itemReq.getQuantity();
             produto.setStock(novoEstoque);
             produto.setAvailable(novoEstoque > 0);
             produtoRepository.save(produto);
         }
 
-        // 3. Calcular Total do Pedido
         pedido.calcularTotal();
 
-        // 4. Lógica de Pagamento via Saldo (BALANCE)
         if (pedido.getPaymentMethod() == MetodoPagamento.BALANCE) {
             BigDecimal saldoAtual = (usuario.getBalance() != null) ? usuario.getBalance() : BigDecimal.ZERO;
-
             if (saldoAtual.compareTo(pedido.getTotal()) < 0) {
-                throw new RuntimeException("Saldo insuficiente. Saldo atual: R$" + saldoAtual);
+                throw new RuntimeException("Saldo insuficiente.");
             }
-
-            // Deduzir do banco de dados
             usuario.setBalance(saldoAtual.subtract(pedido.getTotal()));
             usuarioRepository.save(usuario);
         }
 
-        // 5. Salvar Pedido
         Pedido salvo = pedidoRepository.save(pedido);
         return convertToDTO(salvo);
     }
 
+    // ATUALIZADO: Agora suporta receber o motivo
     @Transactional
-    public PedidoDTO atualizarStatus(Long id, String novoStatus) {
+    public PedidoDTO atualizarStatus(Long id, String novoStatus, String motivo) {
         Pedido pedido = pedidoRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Pedido não encontrado"));
+
+        if ("CANCELLED".equalsIgnoreCase(novoStatus)) {
+            return cancelarPedido(id, motivo);
+        }
 
         pedido.setStatus(StatusPedido.valueOf(novoStatus.toUpperCase()));
         Pedido salvo = pedidoRepository.save(pedido);
         return convertToDTO(salvo);
     }
 
-    /**
-     * Converte a Entidade Pedido para PedidoDTO de forma segura.
-     * Usa o produtoService para converter a entidade Produto em DTO.
-     */
+    // NOVO MÉTODO: Centraliza a lógica de cancelamento, estorno e devolução de estoque
+    @Transactional
+    public PedidoDTO cancelarPedido(Long id, String motivo) {
+        Pedido pedido = pedidoRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Pedido não encontrado"));
+
+        if (pedido.getStatus() != StatusPedido.PENDING) {
+            throw new RuntimeException("Apenas pedidos pendentes podem ser cancelados.");
+        }
+
+        // 1. Estorno de Saldo
+        if (pedido.getPaymentMethod() == MetodoPagamento.BALANCE) {
+            Usuario usuario = pedido.getUsuario();
+            BigDecimal saldoAtual = (usuario.getBalance() != null) ? usuario.getBalance() : BigDecimal.ZERO;
+            usuario.setBalance(saldoAtual.add(pedido.getTotal()));
+            usuarioRepository.save(usuario);
+        }
+
+        // 2. Devolver Itens ao Estoque
+        for (ItemPedido item : pedido.getItems()) {
+            Produto produto = item.getProduto();
+            produto.setStock(produto.getStock() + item.getQuantity());
+            produto.setAvailable(true);
+            produtoRepository.save(produto);
+        }
+
+        // 3. Atualizar Status e Motivo
+        pedido.setStatus(StatusPedido.CANCELLED);
+        pedido.setCancelReason(motivo);
+
+        Pedido salvo = pedidoRepository.save(pedido);
+        return convertToDTO(salvo);
+    }
+
     private PedidoDTO convertToDTO(Pedido pedido) {
         List<ItemPedidoDTO> itemsDTO = pedido.getItems().stream()
                 .map(item -> new ItemPedidoDTO(
@@ -144,11 +168,11 @@ public class PedidoService {
                         produtoService.convertToDTO(item.getProduto()),
                         item.getQuantity(),
                         item.getPriceUnit(),
-                        // Garante que o subtotal nunca seja null para o JSON
                         (item.getSubtotal() != null) ? item.getSubtotal() : BigDecimal.ZERO
                 ))
                 .collect(Collectors.toList());
 
+        // Adicionado o pedido.getCancelReason() no final do construtor do DTO
         return new PedidoDTO(
                 pedido.getId(),
                 pedido.getUsuario().getId(),
@@ -159,7 +183,8 @@ public class PedidoService {
                 pedido.getStatus().name().toLowerCase(),
                 pedido.getPaymentMethod().name().toLowerCase(),
                 pedido.getCreatedAt(),
-                pedido.getPickupCode()
+                pedido.getPickupCode(),
+                pedido.getCancelReason()
         );
     }
 }

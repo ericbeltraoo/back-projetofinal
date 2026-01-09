@@ -33,7 +33,6 @@ public class Pedido {
     @Column(name = "user_phone", length = 20)
     private String userPhone;
 
-    // CascadeType.ALL garante que ao salvar o Pedido, os itens sejam salvos automaticamente
     @OneToMany(mappedBy = "pedido", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<ItemPedido> items = new ArrayList<>();
 
@@ -54,6 +53,10 @@ public class Pedido {
     @Column(name = "pickup_code", length = 4)
     private String pickupCode;
 
+    // Coluna para armazenar o motivo do cancelamento no banco de dados
+    @Column(name = "cancel_reason", columnDefinition = "TEXT")
+    private String cancelReason;
+
     @PrePersist
     protected void onCreate() {
         if (this.createdAt == null) {
@@ -62,18 +65,18 @@ public class Pedido {
         if (this.status == null) {
             this.status = StatusPedido.PENDING;
         }
-        // Gera código de retirada dos últimos 4 dígitos do telefone
+        // Gera código de retirada baseado nos últimos 4 dígitos do telefone
         if (this.userPhone != null && this.userPhone.length() >= 4) {
             this.pickupCode = this.userPhone.substring(this.userPhone.length() - 4);
         } else {
             // Caso o telefone seja curto ou nulo, gera um código baseado no timestamp
-            this.pickupCode = String.valueOf(System.currentTimeMillis()).substring(9);
+            String ts = String.valueOf(System.currentTimeMillis());
+            this.pickupCode = ts.substring(ts.length() - 4);
         }
     }
 
     /**
      * Calcula o total do pedido somando o subtotal de cada item.
-     * Implementação robusta para evitar NullPointerException e erro de 'augend'.
      */
     public void calcularTotal() {
         if (this.items == null || this.items.isEmpty()) {
@@ -91,6 +94,9 @@ public class Pedido {
 
     // Método utilitário para adicionar itens garantindo a relação bidirecional
     public void adicionarItem(ItemPedido item) {
+        if (items == null) {
+            items = new ArrayList<>();
+        }
         items.add(item);
         item.setPedido(this);
     }

@@ -22,4 +22,7 @@ public class PedidoDTO {
     private String paymentMethod;
     private LocalDateTime createdAt;
     private String pickupCode;
+
+    // Novo campo para enviar o motivo do cancelamento ao Frontend
+    private String cancelReason;
 }
